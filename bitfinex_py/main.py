@@ -1,11 +1,11 @@
-import bitfinex
+from bfxapi import Client
 import time
 import datetime
 from threading import Thread
 
 class AutoLendingBitfinex:
     def __init__(self, api_key, api_secret):
-        self.client = bitfinex.Client(api_key, api_secret)
+        self.client = Client(api_key=api_key, api_secret=api_secret)
         self.lowest_price = 0.00025
         self.set_aside_funds = 0
         self.unit_amount = 150
@@ -13,7 +13,7 @@ class AutoLendingBitfinex:
         self.init = False
 
     def main(self):
-        print("安迪的綠葉放貸機器人 ver 1.04")
+        print("放貸機器人 ver 1.00")
         while True:
             if not self.init:
                 self.task = Thread(target=self.main_runner)
@@ -27,8 +27,8 @@ class AutoLendingBitfinex:
             time.sleep(1)
         print("運轉中...")
         # 獲取資產餘額
-        data = self.client.balances()
-        usd_remaining = next((x['available'] for x in data if x['type'] == 'funding' and x['currency'] == 'usd'), 0)
+        balances = self.client.rest.auth.get_wallets()
+        usd_remaining = next((x['balanceAvailable'] for x in balances if x['type'] == 'funding' and x['currency'] == 'USD'), 0)
         usd_remaining -= self.set_aside_funds  # 扣掉使用者想要預留的資金
 
         # 如果USD剩餘有超過150
@@ -41,7 +41,7 @@ class AutoLendingBitfinex:
                 # 設定日期
                 period = self.set_period(rate)
                 if rate != 0:
-                    submit_funding_offer = self.client.offer('fUSD', quantity, rate, period)
+                    submit_funding_offer = self.client.rest.auth.submit_offer('fUSD', quantity, rate, period)
                     if 'id' in submit_funding_offer:
                         print(f"已送出融資訂單 , Rate {rate} day {period}")
                     else:
@@ -57,11 +57,11 @@ class AutoLendingBitfinex:
         self.main_runner()
 
     def get_active_funding_offers_count(self):
-        active_funding_offers = self.client.active_offers()
+        active_funding_offers = self.client.rest.auth.get_active_offers('fUSD')
         if active_funding_offers:
             if len(active_funding_offers) > 0 and round(self.get_avg(), 6) != round(float(active_funding_offers[0]['rate']), 6):
                 print(f"已有訂單 利率: {active_funding_offers[0]['rate']} 天數: {active_funding_offers[0]['period']}")
-                self.client.cancel_offer(active_funding_offers[0]['id'])
+                self.client.rest.auth.cancel_offer(active_funding_offers[0]['id'])
                 print("更新訂單")
             return len(active_funding_offers)
         else:
@@ -69,13 +69,13 @@ class AutoLendingBitfinex:
             return -1
 
     def get_avg(self):
-        kline_data = self.client.kline('fUSD', '30m', start=datetime.datetime.utcnow() - datetime.timedelta(hours=12))
+        kline_data = self.client.rest.public.get_candles('fUSD', '30m', start=datetime.datetime.utcnow() - datetime.timedelta(hours=12))
         if kline_data:
             high_price = sorted([x['high'] for x in kline_data], reverse=True)[:11]
             avg = sum(high_price) / len(high_price)
             print(avg)
             # 檢查最新價格是不是比avg還高
-            trade_history = self.client.trades('fUSD', start=datetime.datetime.utcnow() - datetime.timedelta(minutes=30))
+            trade_history = self.client.rest.public.get_trades('fUSD', start=datetime.datetime.utcnow() - datetime.timedelta(minutes=30))
             if trade_history:
                 if trade_history[0]['price'] > avg:
                     avg = trade_history[0]['price']
