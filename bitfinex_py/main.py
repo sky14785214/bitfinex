@@ -6,7 +6,7 @@ from threading import Thread
 class AutoLendingBitfinex:
     def __init__(self, api_key, api_secret, currency):
         self.client = Client(api_key=api_key, api_secret=api_secret)
-        self.currency = currency  # 新增變數來儲存幣種
+        self.currency = currency
         self.lowest_price = 0.006
         self.set_aside_funds = 0
         self.unit_amount = 150
@@ -29,7 +29,7 @@ class AutoLendingBitfinex:
         print("運轉中...")
         # 獲取資產餘額
         balances = self.client.rest.auth.get_wallets()
-        remaining = next((x.get_balance_available() for x in balances if x.get_type() == 'funding' and x.get_currency() == 'USD'), 0)
+        remaining = next((x.balanceAvailable for x in balances if x.wallet_type == 'funding' and x.currency == self.currency), 0)
         remaining -= self.set_aside_funds  # 扣除使用者想要預留的資金
 
         # 如果剩餘有超過150
@@ -58,7 +58,7 @@ class AutoLendingBitfinex:
         self.main_runner()
 
     def get_active_funding_offers_count(self):
-        active_funding_offers = self.client.rest.auth.get_active_offers(f'f{self.currency}')
+        active_funding_offers = self.client.rest.auth.get_funding_offers()
         if active_funding_offers:
             if len(active_funding_offers) > 0 and round(self.get_avg(), 6) != round(float(active_funding_offers[0]['rate']), 6):
                 print(f"已有訂單 利率: {active_funding_offers[0]['rate']} 天數: {active_funding_offers[0]['period']}")
@@ -66,7 +66,7 @@ class AutoLendingBitfinex:
                 print("更新訂單")
             return len(active_funding_offers)
         else:
-            print(f"獲取訂單錯誤 {active_funding_offers.get('message', '')}")
+            print("獲取訂單錯誤")
             return -1
 
     def get_avg(self):
@@ -82,7 +82,7 @@ class AutoLendingBitfinex:
                     avg = trade_history[0]['price']
                     print(f"Avg被市場價格刷新 {avg}")
             else:
-                print(f"Trade history error {trade_history.get('message', '')}")
+                print("Trade history error")
                 return 0
             print(f"AVG {avg}")
             return avg if avg > self.lowest_price else self.lowest_price
